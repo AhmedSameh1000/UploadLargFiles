@@ -17,9 +17,6 @@ export class AppComponent {
     var upload = new tus.Upload(myFile, {
       endpoint: 'https://localhost:7264/files/',
       retryDelays: [0, 3000, 5000, 10000, 20000],
-      headers: {
-        fileType: myFile.type,
-      },
       metadata: {
         filename: myFile.name,
         filetype: myFile.type,

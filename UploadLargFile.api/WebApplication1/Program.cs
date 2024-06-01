@@ -49,8 +49,8 @@ builder.WebHost.ConfigureKestrel(opt =>
     opt.Limits.MaxRequestBufferSize = 2_000_000_000; // Limit to 1 MB
 });
 var app = builder.Build();
-
 app.UseStaticFiles();
+
 app.MapTus("/files", async httpContext => new()
 {
     Store = new tusdotnet.Stores.TusDiskStore(Path.Combine(host.WebRootPath, "files")),
@@ -59,18 +59,42 @@ app.MapTus("/files", async httpContext => new()
         // What to do when file is completely uploaded?
         OnFileCompleteAsync = async eventContext =>
         {
-            //var File = await eventContext.GetFileAsync();
+            var file = await eventContext.GetFileAsync();
+            var metadata = await file.GetMetadataAsync(eventContext.CancellationToken);
 
-            //var metaData = await File.GetMetadataAsync(eventContext.CancellationToken);
-            //using FileStream Content = await File.GetContentAsync(eventContext.CancellationToken) as FileStream;
-
-            //await TUS_Process.TUSProcess(Content, metaData);
-            var FileUploded = new FileUploaded()
+            // Extract the original file name from metadata
+            if (metadata.TryGetValue("filename", out var metadataFilename))
             {
-                Path = Path.Combine(host.WebRootPath, "files", eventContext.FileId)
-            };
-            await dbContext.files.AddAsync(FileUploded);
-            await dbContext.SaveChangesAsync();
+                var originalFileName = metadataFilename.GetString(System.Text.Encoding.UTF8);
+
+                // Get the current file path
+                var currentFilePath = Path.Combine(host.WebRootPath, "files", eventContext.FileId);
+                //"C:\\Users\\Ahmed Sameh\\Desktop\\New folder\\UploadLargFiles\\UploadLargFile.api\\WebApplication1\\wwwroot\\files\\4cda446f02254512a9b06a231b265e2f"
+                // Define the new file path with the original file name
+
+                var newFilePath = Path.Combine(host.WebRootPath, "files", originalFileName);
+                //"C:\\Users\\Ahmed Sameh\\Desktop\\New folder\\UploadLargFiles\\UploadLargFile.api\\WebApplication1\\wwwroot\\files\\ASP NET [002] Web Essentials.mp4"
+                try
+                {
+                    // Rename the file
+                    File.Move(currentFilePath, newFilePath);
+                }
+                catch (IOException ex)
+                {
+                    // Handle the exception (e.g., log it, notify the user, etc.)
+                    Console.WriteLine($"An error occurred while renaming the file: {ex.Message}");
+                    // Optionally, you can implement a strategy to handle existing files, like appending a unique identifier to the file name
+                }
+
+                // Save the new file path to the database
+                var fileUploaded = new FileUploaded()
+                {
+                    Path = newFilePath,
+                    fileName = originalFileName,
+                };
+                await dbContext.files.AddAsync(fileUploaded);
+                await dbContext.SaveChangesAsync();
+            }
         }
     },
 });
@@ -89,20 +113,3 @@ app.UseAuthorization();
 app.MapControllers();
 
 app.Run();
-
-public class TUS_Process
-{
-    public static Task TUSProcess(FileStream content, Dictionary<string, Metadata> metadata)
-    {
-        var c = content;
-        var m = metadata;
-        var name = metadata["filename"].GetString(System.Text.Encoding.UTF8);
-        var directory = Path.GetDirectoryName(content.Name);
-
-        var destpath = Path.Combine(directory, name);
-
-        File.Copy(content.Name, destpath, true);
-
-        return Task.CompletedTask;
-    }
-}
